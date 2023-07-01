@@ -97,7 +97,7 @@ func NewTransactionHandler(srv *gin.Engine, trxUsecase usecase.TransactionUsecas
 		trxUsecase: trxUsecase,
 	}
 	// srv.GET("/service/:id", svcHandler.GetServiceById)
-	srv.GET("/service", trxHandler.GetAllTransaction)
+	srv.GET("/transaction", trxHandler.GetAllTransaction)
 	srv.POST("/transaction", trxHandler.CreateTransaction)
 	// srv.PUT("/service/:id", svcHandler.UpdateService)
 	// srv.DELETE("/service/:id", svcHandler.DeleteService)
