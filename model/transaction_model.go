@@ -4,19 +4,20 @@ import "time"
 
 type TransactionHeaderRepo struct {
 	No        int64
-	StartDate time.Time `binding:"required"`
-	EndDate   time.Time `binding:"required"`
-	CustName  string    `binding:"required"`
-	Phone     string    `binding:"required"`
+	StartDate time.Time
+	EndDate   time.Time
+	CustName  string
+	Phone     string
 
 	ArrDetail []TransactionDetailRepo
 }
 
 type TransactionDetailRepo struct {
 	Id          int64
-	No          int64   `binding:"required"`
-	ServiceName string  `binding:"required"`
-	Qty         float64 `binding:"required"`
-	Price       float64 `binding:"required"`
-	Uom         string  `binding:"required"`
+	No          int64
+	Service_Id  int
+	ServiceName string
+	Qty         float64
+	Price       float64
+	Uom         string
 }

@@ -5,6 +5,7 @@ import (
 	"goclean/apperror"
 	"goclean/model"
 	"goclean/repo"
+	"time"
 )
 
 type TransactionUsecase interface {
@@ -28,7 +29,37 @@ func (trxUsecase *transaciontUsecaseImpl) CreateTransaction(trx *model.Transacti
 			ErrorMassage: fmt.Sprintf("data service dengan nama %v sudah ada", trx.CustName),
 		}
 	}
-	return trxUsecase.trxRepo.CreateTransaction(trx)
+
+	trxFinal := &model.TransactionHeaderRepo{
+		StartDate: time.Now(),
+		EndDate:   time.Now().AddDate(0, 0, 2),
+		CustName:  trx.CustName,
+		Phone:     trx.Phone,
+	}
+
+	for _, svc := range trx.ArrDetail {
+		det, err := trxUsecase.trxRepo.GetServiceById(svc.Service_Id)
+		if err != nil {
+			return fmt.Errorf("transaciontUsecaseImpl.CreateTransaction() : %w", err)
+		}
+
+		if det == nil {
+			return apperror.AppError{
+				ErrorCode:    1,
+				ErrorMassage: fmt.Sprintf("data service dengan id %v tidak ada", svc.Service_Id),
+			}
+		}
+
+		data := &model.TransactionDetailRepo{
+			ServiceName: det.Name,
+			Price:       det.Price,
+			Uom:         det.Uom,
+			Qty:         svc.Qty,
+		}
+		trxFinal.ArrDetail = append(trxFinal.ArrDetail, *data)
+	}
+
+	return trxUsecase.trxRepo.CreateTransaction(trxFinal)
 }
 
 func (trxUsecase *transaciontUsecaseImpl) GetAllTransaction() ([]*model.TransactionHeaderRepo, error) {

@@ -78,10 +78,10 @@ func (trxHandler transactionHandlerImpl) CreateTransaction(ctx *gin.Context) {
 func (trxHandler transactionHandlerImpl) GetAllTransaction(ctx *gin.Context) {
 	trx, err := trxHandler.trxUsecase.GetAllTransaction()
 	if err != nil {
-		fmt.Printf("serviceHandlerImpl.GetAllService() : %v ", err.Error())
+		fmt.Printf("transactionHandlerImpl.GetAllTransaction() : %v ", err.Error())
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"success":      false,
-			"errorMessage": "An error occurred when retrieving service data",
+			"errorMessage": "An error occurred when retrieving transaction data",
 		})
 		return
 	}

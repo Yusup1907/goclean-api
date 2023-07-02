@@ -8,7 +8,9 @@ import (
 
 type TransactionRepo interface {
 	CreateTransaction(trx *model.TransactionHeaderRepo) error
+	GetServiceById(int) (*model.ServiceModel, error)
 	GetTransactionHeaderByName(string) (*model.TransactionHeaderRepo, error)
+	GetTransactionDetailByTrxNo(int64) (*model.TransactionDetailRepo, error)
 	GetAllTransaction() ([]*model.TransactionHeaderRepo, error)
 }
 
@@ -30,9 +32,9 @@ func (trxRepo *transactionRepoImpl) CreateTransaction(trx *model.TransactionHead
 		return fmt.Errorf("CreateTransaction() Header : %w", err)
 	}
 
-	qry = "INSERT INTO tr_detail(trx_no, service_name, qty, uom, price) VALUES($1, $2, $3, $4, $5)"
+	qry = "INSERT INTO tr_detail(trx_no, service_name, qty, price, uom) VALUES($1, $2, $3, $4, $5)"
 	for _, det := range trx.ArrDetail {
-		_, err := tx.Exec(qry, trx.No, det.ServiceName, det.Qty, det.Uom, det.Price)
+		_, err := tx.Exec(qry, trx.No, det.ServiceName, det.Qty, det.Price, det.Uom)
 		if err != nil {
 			tx.Rollback()
 			return fmt.Errorf("CreateTransaction() Detail : %w", err)
@@ -44,6 +46,20 @@ func (trxRepo *transactionRepoImpl) CreateTransaction(trx *model.TransactionHead
 	return nil
 }
 
+func (trxRepo *transactionRepoImpl) GetServiceById(id int) (*model.ServiceModel, error) {
+	qry := "SELECT id, name, uom, price FROM ms_service WHERE id = $1"
+
+	svc := &model.ServiceModel{}
+	err := trxRepo.db.QueryRow(qry, id).Scan(&svc.Id, &svc.Name, &svc.Uom, &svc.Price)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("error on transactionRepoImpl.getServiceById() : %w", err)
+	}
+	return svc, nil
+}
+
 func (trxRepo *transactionRepoImpl) GetTransactionHeaderByName(custName string) (*model.TransactionHeaderRepo, error) {
 	qry := "SELECT no, start_date, end_date, cust_name, phone_no FROM tr_header WHERE cust_name = $1"
 
@@ -53,23 +69,42 @@ func (trxRepo *transactionRepoImpl) GetTransactionHeaderByName(custName string) 
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("error on serviceRepoImpl.GetTransactionHeaderByName() : %w", err)
+		return nil, fmt.Errorf("error on transactionRepoImpl.GetTransactionHeaderByName() : %w", err)
+	}
+	return trx, nil
+}
+
+func (trxRepo *transactionRepoImpl) GetTransactionDetailByTrxNo(trxNo int64) (*model.TransactionDetailRepo, error) {
+	qry := "SELECT id,trx_no, service_name, qty, uom, price FROM tr_detail WHERE trx_no = $1"
+
+	trx := &model.TransactionDetailRepo{}
+	err := trxRepo.db.QueryRow(qry, trxNo).Scan(&trx.Id, &trx.No, &trx.ServiceName, &trx.Qty, &trx.Price, &trx.Uom)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("error on transactionRepoImpl.GetTransactionDetailByTrxNo() : %w", err)
 	}
 	return trx, nil
 }
 
 func (trxRepo *transactionRepoImpl) GetAllTransaction() ([]*model.TransactionHeaderRepo, error) {
-	qry := `SELECT trh.no, 
-				   trh.start_date, 
-				   trh.end_date, 
-				   trh.cust_name, 
-				   trh.phone_no, 
-				   trd.service_name, 
-				   trd.qty, 
-				   trd.uom, 
-				   trd.price
-			FROM tr_header trh
-			INNER JOIN tr_detail trd ON trh.no = trd.trx_no`
+	qry := `SELECT 
+				trh.no, 
+				trh.start_date, 
+				trh.end_date, 
+				trh.cust_name, 
+				trh.phone_no, 
+				trd.id,
+				trd.trx_no,
+				trd.service_name, 
+				trd.qty, 
+				trd.uom, 
+				trd.price
+			FROM 
+				tr_header trh
+			JOIN 
+				tr_detail trd ON trh.no = trd.trx_no`
 
 	rows, err := trxRepo.db.Query(qry)
 	if err != nil {
@@ -81,10 +116,10 @@ func (trxRepo *transactionRepoImpl) GetAllTransaction() ([]*model.TransactionHea
 	var arrTransaction []*model.TransactionHeaderRepo
 	for rows.Next() {
 		trxHeader := &model.TransactionHeaderRepo{}
-		trxDetail := model.TransactionDetailRepo{} // Menyimpan detail transaksi sementara
+		trxDetail := model.TransactionDetailRepo{}
 		err := rows.Scan(
 			&trxHeader.No, &trxHeader.StartDate, &trxHeader.EndDate,
-			&trxHeader.CustName, &trxHeader.Phone, &trxDetail.ServiceName,
+			&trxHeader.CustName, &trxHeader.Phone, &trxDetail.Id, &trxDetail.No, &trxDetail.ServiceName,
 			&trxDetail.Qty, &trxDetail.Uom, &trxDetail.Price,
 		)
 		if err != nil {
@@ -95,7 +130,7 @@ func (trxRepo *transactionRepoImpl) GetAllTransaction() ([]*model.TransactionHea
 	}
 
 	if err = rows.Err(); err != nil {
-		return nil, fmt.Errorf("error on serviceRepoImpl.GetAllTransaction() : %w", err)
+		return nil, fmt.Errorf("GetAllTransactions() Rows: %w", err)
 	}
 
 	return arrTransaction, nil
