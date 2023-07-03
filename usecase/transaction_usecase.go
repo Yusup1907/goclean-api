@@ -11,10 +11,12 @@ import (
 type TransactionUsecase interface {
 	CreateTransaction(trx *model.TransactionHeaderRepo) error
 	GetAllTransaction() ([]*model.TransactionHeaderRepo, error)
+	GetTransactionByNo(int64) (*model.TransactionHeaderRepo, error)
 }
 
 type transaciontUsecaseImpl struct {
 	trxRepo repo.TransactionRepo
+	svcRepo repo.ServiceRepo
 }
 
 func (trxUsecase *transaciontUsecaseImpl) CreateTransaction(trx *model.TransactionHeaderRepo) error {
@@ -38,7 +40,7 @@ func (trxUsecase *transaciontUsecaseImpl) CreateTransaction(trx *model.Transacti
 	}
 
 	for _, svc := range trx.ArrDetail {
-		det, err := trxUsecase.trxRepo.GetServiceById(svc.Service_Id)
+		det, err := trxUsecase.svcRepo.GetServiceById(svc.Service_Id)
 		if err != nil {
 			return fmt.Errorf("transaciontUsecaseImpl.CreateTransaction() : %w", err)
 		}
@@ -66,8 +68,13 @@ func (trxUsecase *transaciontUsecaseImpl) GetAllTransaction() ([]*model.Transact
 	return trxUsecase.trxRepo.GetAllTransaction()
 }
 
-func NewTransactionUseCase(trxRepo repo.TransactionRepo) TransactionUsecase {
+func (trxUsecase *transaciontUsecaseImpl) GetTransactionByNo(no int64) (*model.TransactionHeaderRepo, error) {
+	return trxUsecase.trxRepo.GetTransactionByNo(no)
+}
+
+func NewTransactionUseCase(trxRepo repo.TransactionRepo, svcRepo repo.ServiceRepo) TransactionUsecase {
 	return &transaciontUsecaseImpl{
 		trxRepo: trxRepo,
+		svcRepo: svcRepo,
 	}
 }

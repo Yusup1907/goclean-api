@@ -8,10 +8,11 @@ import (
 
 type TransactionRepo interface {
 	CreateTransaction(trx *model.TransactionHeaderRepo) error
-	GetServiceById(int) (*model.ServiceModel, error)
 	GetTransactionHeaderByName(string) (*model.TransactionHeaderRepo, error)
 	GetTransactionDetailByTrxNo(int64) (*model.TransactionDetailRepo, error)
+	GetAllTransactionDetails() ([]*model.TransactionDetailRepo, error)
 	GetAllTransaction() ([]*model.TransactionHeaderRepo, error)
+	GetTransactionByNo(int64) (*model.TransactionHeaderRepo, error)
 }
 
 type transactionRepoImpl struct {
@@ -46,20 +47,6 @@ func (trxRepo *transactionRepoImpl) CreateTransaction(trx *model.TransactionHead
 	return nil
 }
 
-func (trxRepo *transactionRepoImpl) GetServiceById(id int) (*model.ServiceModel, error) {
-	qry := "SELECT id, name, uom, price FROM ms_service WHERE id = $1"
-
-	svc := &model.ServiceModel{}
-	err := trxRepo.db.QueryRow(qry, id).Scan(&svc.Id, &svc.Name, &svc.Uom, &svc.Price)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("error on transactionRepoImpl.getServiceById() : %w", err)
-	}
-	return svc, nil
-}
-
 func (trxRepo *transactionRepoImpl) GetTransactionHeaderByName(custName string) (*model.TransactionHeaderRepo, error) {
 	qry := "SELECT no, start_date, end_date, cust_name, phone_no FROM tr_header WHERE cust_name = $1"
 
@@ -88,6 +75,44 @@ func (trxRepo *transactionRepoImpl) GetTransactionDetailByTrxNo(trxNo int64) (*m
 	return trx, nil
 }
 
+func (trxRepo *transactionRepoImpl) GetAllTransactionDetails() ([]*model.TransactionDetailRepo, error) {
+	qry := `SELECT 
+				trd.id,
+				trd.trx_no,
+				trd.service_name, 
+				trd.qty, 
+				trd.uom, 
+				trd.price
+			FROM 
+				tr_detail trd`
+
+	rows, err := trxRepo.db.Query(qry)
+	if err != nil {
+		return nil, fmt.Errorf("GetAllTransactionDetails() Query: %w", err)
+	}
+
+	defer rows.Close()
+
+	var arrTransactionDetails []*model.TransactionDetailRepo
+	for rows.Next() {
+		trxDetail := &model.TransactionDetailRepo{}
+		err := rows.Scan(
+			&trxDetail.Id, &trxDetail.No, &trxDetail.ServiceName,
+			&trxDetail.Qty, &trxDetail.Uom, &trxDetail.Price,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("GetAllTransactionDetails() Scan: %w", err)
+		}
+		arrTransactionDetails = append(arrTransactionDetails, trxDetail)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("GetAllTransactionDetails() Rows: %w", err)
+	}
+
+	return arrTransactionDetails, nil
+}
+
 func (trxRepo *transactionRepoImpl) GetAllTransaction() ([]*model.TransactionHeaderRepo, error) {
 	qry := `SELECT 
 				trh.no, 
@@ -104,7 +129,8 @@ func (trxRepo *transactionRepoImpl) GetAllTransaction() ([]*model.TransactionHea
 			FROM 
 				tr_header trh
 			JOIN 
-				tr_detail trd ON trh.no = trd.trx_no`
+				tr_detail trd ON trh.no = trd.trx_no
+			ORDER BY trh.no ASC`
 
 	rows, err := trxRepo.db.Query(qry)
 	if err != nil {
@@ -113,7 +139,7 @@ func (trxRepo *transactionRepoImpl) GetAllTransaction() ([]*model.TransactionHea
 
 	defer rows.Close()
 
-	var arrTransaction []*model.TransactionHeaderRepo
+	transactionMap := make(map[int64]*model.TransactionHeaderRepo)
 	for rows.Next() {
 		trxHeader := &model.TransactionHeaderRepo{}
 		trxDetail := model.TransactionDetailRepo{}
@@ -125,15 +151,76 @@ func (trxRepo *transactionRepoImpl) GetAllTransaction() ([]*model.TransactionHea
 		if err != nil {
 			return nil, fmt.Errorf("GetAllTransactions() Scan: %w", err)
 		}
-		trxHeader.ArrDetail = append(trxHeader.ArrDetail, trxDetail)
-		arrTransaction = append(arrTransaction, trxHeader)
+
+		if _, ok := transactionMap[trxHeader.No]; !ok {
+			transactionMap[trxHeader.No] = trxHeader
+		}
+
+		transactionMap[trxHeader.No].ArrDetail = append(transactionMap[trxHeader.No].ArrDetail, trxDetail)
 	}
 
 	if err = rows.Err(); err != nil {
 		return nil, fmt.Errorf("GetAllTransactions() Rows: %w", err)
 	}
 
+	var arrTransaction []*model.TransactionHeaderRepo
+	for _, trxHeader := range transactionMap {
+		arrTransaction = append(arrTransaction, trxHeader)
+	}
+
 	return arrTransaction, nil
+}
+
+func (trxRepo *transactionRepoImpl) GetTransactionByNo(no int64) (*model.TransactionHeaderRepo, error) {
+	qry := `SELECT 
+				trh.no, 
+				trh.start_date, 
+				trh.end_date, 
+				trh.cust_name, 
+				trh.phone_no, 
+				trd.id, 
+				trd.trx_no, 
+				trd.service_name, 
+				trd.qty, 
+				trd.uom, 
+				trd.price 
+			FROM 
+				tr_header trh 
+			JOIN 
+				tr_detail trd ON trh.no = trd.trx_no WHERE trh.no = $1`
+
+	rows, err := trxRepo.db.Query(qry, no)
+	if err != nil {
+		return nil, fmt.Errorf("GetTransactionByNo() Query: %w", err)
+	}
+	defer rows.Close()
+
+	trxHeader := &model.TransactionHeaderRepo{
+		ArrDetail: make([]model.TransactionDetailRepo, 0),
+	}
+
+	for rows.Next() {
+		trxDetail := &model.TransactionDetailRepo{}
+		err := rows.Scan(
+			&trxHeader.No, &trxHeader.StartDate, &trxHeader.EndDate,
+			&trxHeader.CustName, &trxHeader.Phone, &trxDetail.Id, &trxDetail.No, &trxDetail.ServiceName,
+			&trxDetail.Qty, &trxDetail.Uom, &trxDetail.Price,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("GetTransactionByNo() Scan: %w", err)
+		}
+		trxHeader.ArrDetail = append(trxHeader.ArrDetail, *trxDetail)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("GetTransactionByNo() Rows: %w", err)
+	}
+
+	if len(trxHeader.ArrDetail) == 0 {
+		return nil, fmt.Errorf("GetTransactionByNo() No transaction found")
+	}
+
+	return trxHeader, nil
 }
 
 func NewTransactionRepo(db *sql.DB) TransactionRepo {

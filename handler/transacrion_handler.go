@@ -7,6 +7,7 @@ import (
 	"goclean/model"
 	"goclean/usecase"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 )
@@ -92,11 +93,46 @@ func (trxHandler transactionHandlerImpl) GetAllTransaction(ctx *gin.Context) {
 	})
 }
 
+func (trxHandler transactionHandlerImpl) GetTransactionByNo(ctx *gin.Context) {
+	noText := ctx.Param("no")
+	if noText == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"success":      false,
+			"errorMessage": "No tidak boleh kosong",
+		})
+		return
+	}
+
+	no, err := strconv.ParseInt(noText, 10, 64)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"success":      false,
+			"errorMessage": "No harus angka",
+		})
+		return
+	}
+
+	trx, err := trxHandler.trxUsecase.GetTransactionByNo(no)
+	if err != nil {
+		fmt.Printf("transactionHandlerImpl.GetTransactionByNo() : %v ", err.Error())
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"success":      false,
+			"errorMessage": "An error occurred when retrieving service data",
+		})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    trx,
+	})
+}
+
 func NewTransactionHandler(srv *gin.Engine, trxUsecase usecase.TransactionUsecase) TransactionHandler {
 	trxHandler := &transactionHandlerImpl{
 		trxUsecase: trxUsecase,
 	}
-	// srv.GET("/service/:id", svcHandler.GetServiceById)
+	srv.GET("/transaction/:no", trxHandler.GetTransactionByNo)
 	srv.GET("/transaction", trxHandler.GetAllTransaction)
 	srv.POST("/transaction", trxHandler.CreateTransaction)
 	// srv.PUT("/service/:id", svcHandler.UpdateService)
